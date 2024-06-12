@@ -6,45 +6,44 @@ import torch
 import qutip
 
 class ConvEncoderCircuit:
-    def __init__(self, data_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs, diff_method="best"):
+    def __init__(self, input_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs, diff_method="best"):
         """Create basic SQAE
 
         Args:
-            data_qbits (int): number of qbits to upload data and use as encoder
+            input_qbits (int): number of qbits to upload input and use as encoder
             latent_qbits (int): number of latent qbits
             device (pennylane device): pennylane device to use for circuit evaluation
             img_dim (int): dimension of the images (width)
-            kernel_size (int): size of the kernel to use when uploading the data
-            stride (int): stride to use when uploading the data
+            kernel_size (int): size of the kernel to use when uploading the input
+            stride (int): stride to use when uploading the input
             DRCs (int): number of times to repeat the encoding upload circuit in the encoder
             diff_method (str): method to differentiate quantum circuit, usually "adjoint" is best.
         """
 
         self.dev = device
-        self.data_qbits = data_qbits
+        self.input_qbits = input_qbits
         self.latent_qbits = latent_qbits
-        self.trash_qbits = self.data_qbits - self.latent_qbits
-        self.total_qbits = data_qbits + self.trash_qbits + 1
-        self.circuit_node = qml.QNode(self.circuit, device, diff_method=diff_method, interface="torch")
-        self.latent_node = qml.QNode(self.visualize_latent_circuit, device, diff_method=diff_method)
+        self.trash_qbits = self.input_qbits - self.latent_qbits
+        self.total_qbits = input_qbits + self.trash_qbits + 1
+        self.circuit_node = qml.QNode(self.circuit, device, interface="torch")
+        self.latent_node = qml.QNode(self.visualize_latent_circuit, device, interface="torch")
 
         self.auc_hist = []
         self.animation_filenames = []
         self.bloch_animation_filenames = []
 
-        self.parameters_shape = (2 * data_qbits,)
-        self.data_shape = (data_qbits,)
+        # self.parameters_shape = (2 * input_qbits,)
+        # self.input_shape = (input_qbits,)
 
         self.kernel_size = kernel_size
         self.stride = stride
         self.DRCs = DRCs
 
-        self.data_shape = (img_dim, img_dim)
+        self.input_shape = (img_dim, img_dim)
         self.number_of_kernel_uploads = len(list(range(0, img_dim - kernel_size + 1, stride)))**2
         self.parameters_shape = (DRCs * 2 * self.number_of_kernel_uploads * kernel_size ** 2,)
         self.params_per_layer = self.parameters_shape[0] // DRCs
 
-        self.params = torch.rand(self.parameters_shape, requires_grad=True)
 
     def _conv_upload(self, params, img, kernel_size, stride, wires):
         """Upload image using the convolution like method
@@ -73,64 +72,71 @@ class ConvEncoderCircuit:
                 elif i % 3 == 2:
                     qml.RZ(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
         
-        number_of_kernel_uploads = len(list(range(0, img.shape[1]-kernel_size+1, stride))) * len(list(range(0, img.shape[0]-kernel_size+1, stride)))
+        # number_of_kernel_uploads = len(list(range(0, img.shape[1]-kernel_size+1, stride))) * len(list(range(0, img.shape[0]-kernel_size+1, stride)))
+        number_of_kernel_uploads = 9 ## Error in calculate number_of_kernel_uploads
         params_per_upload = len(params) // number_of_kernel_uploads
+
         upload_counter = 0
         wire = 0
+        print("HERE")
+        print(img.shape, kernel_size, stride)
         for y in range(0, img.shape[1]-kernel_size+1, stride):
             for x in range(0, img.shape[0]-kernel_size+1, stride):
+                
+                print("imgae slide", img[y:y+kernel_size, x:x+kernel_size], wires[wire])
                 single_upload(params[upload_counter * params_per_upload: (upload_counter + 1) * params_per_upload],
                                    img[y:y+kernel_size, x:x+kernel_size], wires[wire])
                 upload_counter = upload_counter + 1
                 wire = wire + 1
 
-    def encoder(self, params, data):
+    def encoder(self, params, inputs):
         """The encoder circuit for the SQAE
 
         Args:
             params (list): parameters to use
-            data (list): data to upload
+            inputs (list): inputs to upload
         """
         def circular_entanglement(wires):
             qml.CNOT(wires=[wires[-1], 0])
             for i in range(len(wires)-1):
                 qml.CNOT(wires=[i, i+1])
-            
+
         for i in range(self.DRCs):
-            self._conv_upload(params[i * self.params_per_layer:(i + 1) * self.params_per_layer], data, self.kernel_size, self.stride, list(range(self.number_of_kernel_uploads)))
+            self._conv_upload(params[i * self.params_per_layer:(i + 1) * self.params_per_layer], inputs, self.kernel_size, self.stride, list(range(self.number_of_kernel_uploads)))
             circular_entanglement(list(range(self.number_of_kernel_uploads)))
 
-    def circuit(self, params, data):
+    def circuit(self, params, inputs):
         """Full circuit to be used as SQAE
 
         includes encoder and SWAP test
 
         Args:
             params (list): parameters to be used for PQC
-            data (list): data for the circuit
+            inputs (list): inputs for the circuit
 
         Returns:
             expectation value of readout bit
 
         """
-        self.encoder(params, data)
+        print("2 circuit", inputs.shape)
+        self.encoder(params, inputs)
 
         # swap test
         qml.Hadamard(wires=self.total_qbits-1)
         for i in range(self.trash_qbits):
-            qml.CSWAP(wires=[self.total_qbits - 1, self.latent_qbits + i, self.data_qbits + i])
+            qml.CSWAP(wires=[self.total_qbits - 1, self.latent_qbits + i, self.input_qbits + i])
         qml.Hadamard(wires=self.total_qbits-1)
 
         return qml.expval(qml.PauliZ(self.total_qbits-1))
 
-    def visualize_latent_circuit(self, params, data, bit, measure_gate):
+    def visualize_latent_circuit(self, params, inputs, bit, measure_gate):
         """encoder circuit with measurement on chosen qbit
 
         can be used to measure arbitrary qbit to visualize bloch sphere etc..
 
         Args:
             params (list): parameters to be used for PQC
-            data (list): data for the circuit
+            inputs (list): inputs for the circuit
             bit (int): qbit index to be measured
             measure_gate (function): function of gate to be measured (qml.PauliX, qml.PauliY, qml.PauliZ)
 
@@ -138,175 +144,227 @@ class ConvEncoderCircuit:
             expectation value of chosen bit
 
         """
-        self.encoder(params, data)
+        self.encoder(params, inputs)
 
         return qml.expval(measure_gate(bit))
 
     def plot_circuit(self):
-        """Plots the circuit with dummy data
+        """Plots the circuit with dummy inputs
         """
 
-        data = torch.rand(self.data_shape, dtype=torch.float32)
-
-        fig, _ = qml.draw_mpl(self.circuit_node)(self.params, data)
+        inputs = torch.rand(self.input_shape)
+        params = torch.rand(self.parameters_shape)
+        fig, _ = qml.draw_mpl(self.circuit_node)(params, inputs)
         fig.show()
         
     
-    def plot_latent_space(self, latent_bit, x_test_bg, x_test_signal, save_fig=None):
-        """Plots the bloch sphere of a chosen qbit for given signal and background data
-
-        Args:
-            latent_bit (int): bit to visualize
-            x_test_bg (list): background data
-            x_test_signal (list): signal data
-            save_fig (str): if string is given, plot will be saved with given name
-
-        """
-
-        b = qutip.Bloch()
-        points_bg_x = [self.latent_node(self.params, i, latent_bit, qml.PauliX) for i in x_test_bg]
-        points_bg_y = [self.latent_node(self.params, i, latent_bit, qml.PauliY) for i in x_test_bg]
-        points_bg_z = [self.latent_node(self.params, i, latent_bit, qml.PauliZ) for i in x_test_bg]
-        x = [points_bg_x[i] for i in range(len(points_bg_x))]
-        y = [points_bg_y[i] for i in range(len(points_bg_y))]
-        z = [points_bg_z[i] for i in range(len(points_bg_z))]
-        bloch_points_bg = [x,y,z]
-        b.add_points(bloch_points_bg)
-
-        points_sig_x = [self.latent_node(self.params, i, latent_bit, qml.PauliX) for i in x_test_signal]
-        points_sig_y = [self.latent_node(self.params, i, latent_bit, qml.PauliY) for i in x_test_signal]
-        points_sig_z = [self.latent_node(self.params, i, latent_bit, qml.PauliZ) for i in x_test_signal]
-        xs = [points_sig_x[i] for i in range(len(points_sig_x))]
-        ys = [points_sig_y[i] for i in range(len(points_sig_y))]
-        zs = [points_sig_z[i] for i in range(len(points_sig_z))]
-        bloch_points_sig = [xs, ys, zs]
-        b.add_points(bloch_points_sig)
-
-        if save_fig:
-            b.save(name=save_fig)
-        else:
-            b.show()
-        b.clear()
-
-    # def train(self, x_train, x_val, learning_rate, epochs, batch_size,
-    #           print_step_size=20, make_animation=False, save_auc=False, x_val_signal=None):
-    #     """Trains the SQAE
+    # def plot_latent_space(self, latent_bit, x_test_bg, x_test_signal, save_fig=None):
+    #     """Plots the bloch sphere of a chosen qbit for given signal and background inputs
 
     #     Args:
-    #         x_train (list): training data
-    #         y_val (list): validation data
-    #         learning_rate (float): learning rate for adam
-    #         epoch (int): epochs to train
-    #         batch_size (int): batch size to use for training
-    #         print_step_size (int): after print_step_size loss on current batch is printed
-    #                                if make_animation or save_auc is True, they will be evaluated
-    #                                after print_step_size as well.
-    #         make_animation (bool): if True build gif of certain bit and tagging evaluation after every
-    #                                print_step_size steps.
-    #         save_auc (bool): If true, AUC will be recorded after every print_step_size steps.
-    #                          If True x_val_signal needs to be given.
-    #         x_val_signal (list): if save_auc is True use this data to evaluate AUC on anomaly tagging.
+    #         latent_bit (int): bit to visualize
+    #         x_test_bg (list): background inputs
+    #         x_test_signal (list): signal inputs
+    #         save_fig (str): if string is given, plot will be saved with given name
 
     #     """
 
-    #     self.train_hist = {'loss': [], 'val_loss': []}
+    #     b = qutip.Bloch()
+    #     points_bg_x = [self.latent_node(self.params, i, latent_bit, qml.PauliX) for i in x_test_bg]
+    #     points_bg_y = [self.latent_node(self.params, i, latent_bit, qml.PauliY) for i in x_test_bg]
+    #     points_bg_z = [self.latent_node(self.params, i, latent_bit, qml.PauliZ) for i in x_test_bg]
+    #     x = [points_bg_x[i] for i in range(len(points_bg_x))]
+    #     y = [points_bg_y[i] for i in range(len(points_bg_y))]
+    #     z = [points_bg_z[i] for i in range(len(points_bg_z))]
+    #     bloch_points_bg = [x,y,z]
+    #     b.add_points(bloch_points_bg)
 
-    #     opt = AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999)
+    #     points_sig_x = [self.latent_node(self.params, i, latent_bit, qml.PauliX) for i in x_test_signal]
+    #     points_sig_y = [self.latent_node(self.params, i, latent_bit, qml.PauliY) for i in x_test_signal]
+    #     points_sig_z = [self.latent_node(self.params, i, latent_bit, qml.PauliZ) for i in x_test_signal]
+    #     xs = [points_sig_x[i] for i in range(len(points_sig_x))]
+    #     ys = [points_sig_y[i] for i in range(len(points_sig_y))]
+    #     zs = [points_sig_z[i] for i in range(len(points_sig_z))]
+    #     bloch_points_sig = [xs, ys, zs]
+    #     b.add_points(bloch_points_sig)
 
-    #     start = time.time()
+    #     if save_fig:
+    #         b.save(name=save_fig)
+    #     else:
+    #         b.show()
+    #     b.clear()
 
-    #     for it in range(epochs):
-    #         start_b = time.time()
-    #         for j, Xbatch in enumerate(self.iterate_minibatches(x_train, batch_size=batch_size)):
-    #             cost_fn = lambda p: self.cost_batch(p, Xbatch)
-    #             self.params = opt.step(cost_fn, self.params)
-    #             print(j, end="\r")
-    #             if j % print_step_size == 0 and not j == 0:
-    #                 end_b = time.time()
-    #                 loss = self.cost_batch(self.params, Xbatch)
-    #                 if not save_auc:
-    #                     print(f"Step: {j:<7} | Loss: {loss:<10.3} | avg step time {(end_b - start_b) / print_step_size :.3} | avg gradient {np.mean(self.params):.3}")
-    #                 if make_animation:
-    #                     filename = f'imgs/animation_{len(self.animation_filenames) + 1}.png'
-    #                     self.animation_filenames.append(filename)
-    #                     self.evaluate(x_val, x_val_signal, save_fig=filename)
+import pytorch_lightning as pl
 
-    #                     bloch_filename = f'imgs/bloch_{len(self.bloch_animation_filenames) + 1}.png'
-    #                     self.bloch_animation_filenames.append(bloch_filename)
-    #                     self.plot_latent_space(3, x_val[:25], x_val_signal[:25], save_fig=bloch_filename)
-    #                 if save_auc:
-    #                     pred_bg = np.array([self.circuit_node(self.params, i) for i in x_val])
-    #                     pred_signal = np.array([self.circuit_node(self.params, i) for i in x_val_signal])
-    #                     bce_background = 1-pred_bg
-    #                     bce_signal = 1-pred_signal
-    #                     y_true = np.append(np.zeros(len(bce_background)), np.ones(len(bce_signal)))
-    #                     y_pred = np.append(bce_background, bce_signal)
-    #                     auc = roc_auc_score(y_true, y_pred)
-    #                     self.auc_hist.append(auc)
-    #                     print(f"Step: {j:<7} | Loss: {loss:<10.3} | avg step time {(end_b - start_b) / print_step_size :.3} | auc: {auc:.3} | avg gradient {np.mean(self.params):.3}")
-    #                 start_b = time.time()
+class QuantumAutoencoder(pl.LightningModule):
+    def __init__(self, input_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs, lr=0.001):
+        super(QuantumAutoencoder, self).__init__()
+        self.quantum_circuit = ConvEncoderCircuit(input_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs)
+        # self.quantum_layer = qml.qnn.TorchLayer(self.quantum_circuit.circuit_node, {"params": self.quantum_circuit.parameters_shape})
+        self.params = torch.nn.Parameter(torch.rand(self.quantum_circuit.parameters_shape, requires_grad=True))
+        self.register_parameter('params', self.params)
+        self.lr = lr
 
-    #         loss = self.cost_batch(self.params, x_train[:len(x_val)])
-    #         val_loss = self.cost_batch(self.params, x_val)
-    #         self.train_hist['loss'].append(loss)
-    #         self.train_hist['val_loss'].append(val_loss)
-    #         print("____")
-    #         print(f"Epoch: {it:<5} | Loss: {loss:<10.3} | Val Loss {val_loss:.3}")
-    #         print("____")
+    def forward(self, batch):
+        batch_size = batch.size(0)
+        results = []
+        print("forward", batch.shape)
+        for i in range(batch_size):
+            sample = batch[i]
+            sample = sample.unsqueeze(0)  # Ensure it has a batch dimension of 1
+            result = self.quantum_circuit.circuit_node(self.params, sample)
+            results.append(result)
+        return torch.stack(results)
 
-    #     end = time.time()
+    def training_step(self, batch, batch_idx):
+        # Average loss (1 - fidelity) of batch
+        # batch = batch[0]  # Extract the first element from the tuple
+        results = self(batch)
+        print(results.shape)
+        loss = ((1 - results) ** 2).mean()
+        self.log('train_loss', loss)
+        return loss
+    
+    # def forward(self, batch):
+    #     print("1. forward", batch.shape)
+    #     return self.quantum_layer(batch)
 
-    #     print(f"Time for {epochs} epochs: {end - start}")
+    # def training_step(self, batch):
+    #     # Average loss (1 - fidelity) of batch
+    #     loss = (1 - self(batch))**2
+    #     self.log('train_loss', loss)
+    #     return loss
 
-    #     if make_animation:
-    #         print("Building animation...", end="\r")
-    #         with imageio.get_writer('animation3.gif', mode='I', fps=8) as writer:
-    #             for filename in self.animation_filenames:
-    #                 image = imageio.imread(filename)
-    #                 writer.append_data(image)
-    #         print("Gif saved, removing files..", end="\r")
-    #         writer.close()
-    #         for filename in set(self.animation_filenames):
-    #             os.remove(filename)
-    #         print("Done.")
+    def validation_step(self, batch, batch_idx):
+        # val_loss = (1 - self(batch))**2
+        # self.log('val_loss', val_loss)
+        # return val_loss
+        pass
 
-    #         print("Building bloch animation...", end="\r")
-    #         with imageio.get_writer('bloch3.gif', mode='I', fps=8) as writer:
-    #             for filename in self.bloch_animation_filenames:
-    #                 image = imageio.imread(filename)
-    #                 writer.append_data(image)
-    #         print("Gif saved, removing files..", end="\r")
-    #         writer.close()
-    #         for filename in set(self.bloch_animation_filenames):
-    #             os.remove(filename)
-    #         print("Done.")
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
 
-    # def iterate_minibatches(self, data, batch_size):
-    #     """Generator of data as batches
+# def QuantumAutoEncoder(pl.LightningModule):
 
-    #     Args:
-    #         data (list): list of data
-    #         batch_size (int): size of batches to return
-    #     """
-    #     for start_idx in range(0, data.shape[0] - batch_size + 1, batch_size):
-    #         idxs = slice(start_idx, start_idx + batch_size)
-    #         yield data[idxs]
+#     def train(self, x_train, x_val, learning_rate, epochs, batch_size,
+#               print_step_size=20, make_animation=False, save_auc=False, x_val_signal=None):
+#         """Trains the SQAE
 
-    # def cost_batch(self, params, batch):
-    #     """evaluate cost function on batch - MSE of fidelities
+#         Args:
+#             x_train (list): training data
+#             y_val (list): validation data
+#             learning_rate (float): learning rate for adam
+#             epoch (int): epochs to train
+#             batch_size (int): batch size to use for training
+#             print_step_size (int): after print_step_size loss on current batch is printed
+#                                    if make_animation or save_auc is True, they will be evaluated
+#                                    after print_step_size as well.
+#             make_animation (bool): if True build gif of certain bit and tagging evaluation after every
+#                                    print_step_size steps.
+#             save_auc (bool): If true, AUC will be recorded after every print_step_size steps.
+#                              If True x_val_signal needs to be given.
+#             x_val_signal (list): if save_auc is True use this data to evaluate AUC on anomaly tagging.
 
-    #     Args:
-    #         params: parameters to use for evaluation
-    #         batch: batch of data
+#         """
 
-    #     Returns:
-    #         Average loss (1 - fidelity) of batch
-    #     """
-    #     loss = 0.0
-    #     for i in batch:
-    #         sample_loss = self.circuit_node(params, i)
-    #         loss = loss + (1 - sample_loss) ** 2
-    #     return loss / len(batch)
+#         self.train_hist = {'loss': [], 'val_loss': []}
+
+#         opt = AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999)
+
+#         start = time.time()
+
+#         for it in range(epochs):
+#             start_b = time.time()
+#             for j, Xbatch in enumerate(self.iterate_minibatches(x_train, batch_size=batch_size)):
+#                 cost_fn = lambda p: self.cost_batch(p, Xbatch)
+#                 self.params = opt.step(cost_fn, self.params)
+#                 print(j, end="\r")
+#                 if j % print_step_size == 0 and not j == 0:
+#                     end_b = time.time()
+#                     loss = self.cost_batch(self.params, Xbatch)
+#                     if not save_auc:
+#                         print(f"Step: {j:<7} | Loss: {loss:<10.3} | avg step time {(end_b - start_b) / print_step_size :.3} | avg gradient {np.mean(self.params):.3}")
+#                     if make_animation:
+#                         filename = f'imgs/animation_{len(self.animation_filenames) + 1}.png'
+#                         self.animation_filenames.append(filename)
+#                         self.evaluate(x_val, x_val_signal, save_fig=filename)
+
+#                         bloch_filename = f'imgs/bloch_{len(self.bloch_animation_filenames) + 1}.png'
+#                         self.bloch_animation_filenames.append(bloch_filename)
+#                         self.plot_latent_space(3, x_val[:25], x_val_signal[:25], save_fig=bloch_filename)
+#                     if save_auc:
+#                         pred_bg = np.array([self.circuit_node(self.params, i) for i in x_val])
+#                         pred_signal = np.array([self.circuit_node(self.params, i) for i in x_val_signal])
+#                         bce_background = 1-pred_bg
+#                         bce_signal = 1-pred_signal
+#                         y_true = np.append(np.zeros(len(bce_background)), np.ones(len(bce_signal)))
+#                         y_pred = np.append(bce_background, bce_signal)
+#                         auc = roc_auc_score(y_true, y_pred)
+#                         self.auc_hist.append(auc)
+#                         print(f"Step: {j:<7} | Loss: {loss:<10.3} | avg step time {(end_b - start_b) / print_step_size :.3} | auc: {auc:.3} | avg gradient {np.mean(self.params):.3}")
+#                     start_b = time.time()
+
+#             loss = self.cost_batch(self.params, x_train[:len(x_val)])
+#             val_loss = self.cost_batch(self.params, x_val)
+#             self.train_hist['loss'].append(loss)
+#             self.train_hist['val_loss'].append(val_loss)
+#             print("____")
+#             print(f"Epoch: {it:<5} | Loss: {loss:<10.3} | Val Loss {val_loss:.3}")
+#             print("____")
+
+#         end = time.time()
+
+#         print(f"Time for {epochs} epochs: {end - start}")
+
+#         if make_animation:
+#             print("Building animation...", end="\r")
+#             with imageio.get_writer('animation3.gif', mode='I', fps=8) as writer:
+#                 for filename in self.animation_filenames:
+#                     image = imageio.imread(filename)
+#                     writer.append_data(image)
+#             print("Gif saved, removing files..", end="\r")
+#             writer.close()
+#             for filename in set(self.animation_filenames):
+#                 os.remove(filename)
+#             print("Done.")
+
+#             print("Building bloch animation...", end="\r")
+#             with imageio.get_writer('bloch3.gif', mode='I', fps=8) as writer:
+#                 for filename in self.bloch_animation_filenames:
+#                     image = imageio.imread(filename)
+#                     writer.append_data(image)
+#             print("Gif saved, removing files..", end="\r")
+#             writer.close()
+#             for filename in set(self.bloch_animation_filenames):
+#                 os.remove(filename)
+#             print("Done.")
+
+#     def iterate_minibatches(self, data, batch_size):
+#         """Generator of data as batches
+
+#         Args:
+#             data (list): list of data
+#             batch_size (int): size of batches to return
+#         """
+#         for start_idx in range(0, data.shape[0] - batch_size + 1, batch_size):
+#             idxs = slice(start_idx, start_idx + batch_size)
+#             yield data[idxs]
+
+#     def cost_batch(self, params, batch):
+#         """evaluate cost function on batch - MSE of fidelities
+
+#         Args:
+#             params: parameters to use for evaluation
+#             batch: batch of data
+
+#         Returns:
+#             Average loss (1 - fidelity) of batch
+#         """
+#         loss = 0.0
+#         for i in batch:
+#             sample_loss = self.circuit_node(params, i)
+#             loss = loss + (1 - sample_loss) ** 2
+#         return loss / len(batch)
 
     # def evaluate(self, x_test_bg, x_test_signal, save_fig=None):
     #     """Evaluate tagging performance on test data giving auc and roc curve
