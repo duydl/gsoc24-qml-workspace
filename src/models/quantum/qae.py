@@ -82,10 +82,11 @@ class ConvEncoderCircuit:
         print(img.shape, kernel_size, stride)
         for y in range(0, img.shape[1]-kernel_size+1, stride):
             for x in range(0, img.shape[0]-kernel_size+1, stride):
-                
-                print("imgae slide", img[y:y+kernel_size, x:x+kernel_size], wires[wire])
+                print(y, y+kernel_size, x, x+kernel_size)
+                print("imgae slide", img[y:y+kernel_size, x:x+kernel_size])
+                print( wires[wire])
                 single_upload(params[upload_counter * params_per_upload: (upload_counter + 1) * params_per_upload],
-                                   img[y:y+kernel_size, x:x+kernel_size], wires[wire])
+                                   img[x:x+kernel_size, y:y+kernel_size], wires[wire])
                 upload_counter = upload_counter + 1
                 wire = wire + 1
 
@@ -102,7 +103,11 @@ class ConvEncoderCircuit:
                 qml.CNOT(wires=[i, i+1])
 
         for i in range(self.DRCs):
-            self._conv_upload(params[i * self.params_per_layer:(i + 1) * self.params_per_layer], inputs, self.kernel_size, self.stride, list(range(self.number_of_kernel_uploads)))
+            self._conv_upload(
+                params[i * self.params_per_layer:(i + 1) * self.params_per_layer], 
+                inputs, self.kernel_size, self.stride, 
+                list(range(self.number_of_kernel_uploads))
+                )
             circular_entanglement(list(range(self.number_of_kernel_uploads)))
 
     def circuit(self, params, inputs):
@@ -196,14 +201,58 @@ class ConvEncoderCircuit:
 
 import pytorch_lightning as pl
 
+class CustomTorchLayer(qml.qnn.TorchLayer):
+    def __init__(
+        self,
+        qnode,
+        weight_shapes,
+    ):
+        super().__init__(qnode, weight_shapes)
+        
+    def forward(self, inputs):  # pylint: disable=arguments-differ
+        """Evaluates a forward pass through the QNode based upon input data and the initialized
+        weights.
+
+        Args:
+            inputs (tensor): data to be processed
+
+        Returns:
+            tensor: output data
+        """
+        # has_batch_dim = len(inputs.shape) > 1
+        has_batch_dim = False
+
+        # in case the input has more than one batch dimension
+        if has_batch_dim:
+            batch_dims = inputs.shape[:-1]
+            # inputs = torch.reshape(inputs, (-1, inputs.shape[-1]))
+
+        # calculate the forward pass as usual
+        results = self._evaluate_qnode(inputs)
+
+        if isinstance(results, tuple):
+            if has_batch_dim:
+                results = [torch.reshape(r, (*batch_dims, *r.shape[1:])) for r in results]
+            return torch.stack(results, dim=0)
+
+        # reshape to the correct number of batch dims
+        if has_batch_dim:
+            results = torch.reshape(results, (*batch_dims, *results.shape[1:]))
+
+        return results
+
+
 class QuantumAutoencoder(pl.LightningModule):
     def __init__(self, input_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs, lr=0.001):
         super(QuantumAutoencoder, self).__init__()
         self.quantum_circuit = ConvEncoderCircuit(input_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs)
-        # self.quantum_layer = qml.qnn.TorchLayer(self.quantum_circuit.circuit_node, {"params": self.quantum_circuit.parameters_shape})
-        self.params = torch.nn.Parameter(torch.rand(self.quantum_circuit.parameters_shape, requires_grad=True))
-        self.register_parameter('params', self.params)
+        quantum_layer = CustomTorchLayer(self.quantum_circuit.circuit_node, {"params": self.quantum_circuit.parameters_shape})
+        # self.params = torch.nn.Parameter(torch.rand(self.quantum_circuit.parameters_shape, requires_grad=True))
+        # self.register_parameter('params', self.params)
         self.lr = lr
+        self.quantum_layer = torch.nn.Sequential(
+            quantum_layer
+        )
 
     def forward(self, batch):
         batch_size = batch.size(0)
@@ -211,8 +260,8 @@ class QuantumAutoencoder(pl.LightningModule):
         print("forward", batch.shape)
         for i in range(batch_size):
             sample = batch[i]
-            sample = sample.unsqueeze(0)  # Ensure it has a batch dimension of 1
-            result = self.quantum_circuit.circuit_node(self.params, sample)
+            # sample = sample.unsqueeze(0)  # Ensure it has a batch dimension of 1
+            result = self.quantum_layer(sample)
             results.append(result)
         return torch.stack(results)
 
@@ -225,9 +274,9 @@ class QuantumAutoencoder(pl.LightningModule):
         self.log('train_loss', loss)
         return loss
     
-    # def forward(self, batch):
+    # def forward(self, batch, batch_idx):
     #     print("1. forward", batch.shape)
-    #     return self.quantum_layer(batch)
+    #     return self.quantum_layer(batch[batch_idx])
 
     # def training_step(self, batch):
     #     # Average loss (1 - fidelity) of batch
@@ -235,11 +284,11 @@ class QuantumAutoencoder(pl.LightningModule):
     #     self.log('train_loss', loss)
     #     return loss
 
-    def validation_step(self, batch, batch_idx):
-        # val_loss = (1 - self(batch))**2
-        # self.log('val_loss', val_loss)
-        # return val_loss
-        pass
+    # def validation_step(self, batch):
+    #     # val_loss = (1 - self(batch))**2
+    #     # self.log('val_loss', val_loss)
+    #     # return val_loss
+    #     pass
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
