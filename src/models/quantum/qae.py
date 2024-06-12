@@ -1,24 +1,11 @@
 """
 Quantum autoencoder implementations using pennylane
 """
-
-import os
-import time
-
-import imageio
-import matplotlib.pyplot as plt
 import pennylane as qml
-from pennylane import numpy as np
-from pennylane.optimize import AdamOptimizer, GradientDescentOptimizer
-from qutip import Bloch
-from sklearn.metrics import roc_auc_score, roc_curve
+import torch
+import qutip
 
-
-class ConvSQAE:
-    """base class for an SQAE architecture with a simple encoding
-    """
-
-
+class ConvEncoderCircuit:
     def __init__(self, data_qbits, latent_qbits, device, img_dim, kernel_size, stride, DRCs, diff_method="best"):
         """Create basic SQAE
 
@@ -30,7 +17,7 @@ class ConvSQAE:
             kernel_size (int): size of the kernel to use when uploading the data
             stride (int): stride to use when uploading the data
             DRCs (int): number of times to repeat the encoding upload circuit in the encoder
-            diff_method (str): method to differentiate quantum circuit, usually "adjoint" ist best.
+            diff_method (str): method to differentiate quantum circuit, usually "adjoint" is best.
         """
 
         self.dev = device
@@ -38,7 +25,7 @@ class ConvSQAE:
         self.latent_qbits = latent_qbits
         self.trash_qbits = self.data_qbits - self.latent_qbits
         self.total_qbits = data_qbits + self.trash_qbits + 1
-        self.circuit_node = qml.QNode(self.circuit, device, diff_method=diff_method)
+        self.circuit_node = qml.QNode(self.circuit, device, diff_method=diff_method, interface="torch")
         self.latent_node = qml.QNode(self.visualize_latent_circuit, device, diff_method=diff_method)
 
         self.auc_hist = []
@@ -48,39 +35,18 @@ class ConvSQAE:
         self.parameters_shape = (2 * data_qbits,)
         self.data_shape = (data_qbits,)
 
-        self.params = np.random.uniform(size=self.parameters_shape, requires_grad=True)
-
-        self.rnd_init = np.random.uniform(0, np.pi, size=self.trash_qbits, requires_grad=False)
-
-        
         self.kernel_size = kernel_size
         self.stride = stride
         self.DRCs = DRCs
 
-        self.data_shape = (img_dim,img_dim)
+        self.data_shape = (img_dim, img_dim)
         self.number_of_kernel_uploads = len(list(range(0, img_dim - kernel_size + 1, stride)))**2
         self.parameters_shape = (DRCs * 2 * self.number_of_kernel_uploads * kernel_size ** 2,)
         self.params_per_layer = self.parameters_shape[0] // DRCs
 
-        self.params = np.random.uniform(size=self.parameters_shape, requires_grad=True)
-    
-    def single_upload(self, params, data, wire):
-        """Upload data on a single qbit
+        self.params = torch.rand(self.parameters_shape, requires_grad=True)
 
-        Args:
-            params (list): parameters to use for upload, must be twice as long as data
-            data (list): data to upload
-            wire (int): on which wire to upload
-        """
-        for i, d in enumerate(data.flatten()):
-            if i % 3 == 0:
-                qml.RZ(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
-            if i % 3 == 1:
-                qml.RY(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
-            if i % 3 == 2:
-                qml.RZ(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
-
-    def conv_upload(self, params, img, kernel_size, stride, wires):
+    def _conv_upload(self, params, img, kernel_size, stride, wires):
         """Upload image using the convolution like method
 
         Args:
@@ -90,26 +56,33 @@ class ConvSQAE:
             stride (int): stride for upload
             wires (list): list of integers to use as qbit index for upload
         """
+        def single_upload(params, data, wire):
+            """Upload data on a single qbit
+
+            Args:
+                params (list): parameters to use for upload, must be twice as long as data
+                data (list): data to upload
+                wire (int): on which wire to upload
+            """
+            data_flat = data.flatten()
+            for i, d in enumerate(data_flat):
+                if i % 3 == 0:
+                    qml.RZ(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
+                elif i % 3 == 1:
+                    qml.RY(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
+                elif i % 3 == 2:
+                    qml.RZ(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
+        
         number_of_kernel_uploads = len(list(range(0, img.shape[1]-kernel_size+1, stride))) * len(list(range(0, img.shape[0]-kernel_size+1, stride)))
         params_per_upload = len(params) // number_of_kernel_uploads
         upload_counter = 0
         wire = 0
         for y in range(0, img.shape[1]-kernel_size+1, stride):
             for x in range(0, img.shape[0]-kernel_size+1, stride):
-                self.single_upload(params[upload_counter * params_per_upload: (upload_counter + 1) * params_per_upload],
+                single_upload(params[upload_counter * params_per_upload: (upload_counter + 1) * params_per_upload],
                                    img[y:y+kernel_size, x:x+kernel_size], wires[wire])
                 upload_counter = upload_counter + 1
                 wire = wire + 1
-                
-    def circular_entanglement(self, wires):
-        """Entangles wires in a circular shape
-
-        Args:
-            wires (list): list of qbits to entangle
-        """
-        qml.CNOT(wires=[wires[-1], 0])
-        for i in range(len(wires)-1):
-            qml.CNOT(wires=[i, i+1])
 
     def encoder(self, params, data):
         """The encoder circuit for the SQAE
@@ -118,10 +91,14 @@ class ConvSQAE:
             params (list): parameters to use
             data (list): data to upload
         """
-
+        def circular_entanglement(wires):
+            qml.CNOT(wires=[wires[-1], 0])
+            for i in range(len(wires)-1):
+                qml.CNOT(wires=[i, i+1])
+            
         for i in range(self.DRCs):
-            self.conv_upload(params[i * self.params_per_layer:(i + 1) * self.params_per_layer], data, self.kernel_size, self.stride, list(range(self.number_of_kernel_uploads)))
-            self.circular_entanglement(list(range(self.number_of_kernel_uploads)))
+            self._conv_upload(params[i * self.params_per_layer:(i + 1) * self.params_per_layer], data, self.kernel_size, self.stride, list(range(self.number_of_kernel_uploads)))
+            circular_entanglement(list(range(self.number_of_kernel_uploads)))
 
     def circuit(self, params, data):
         """Full circuit to be used as SQAE
@@ -136,12 +113,6 @@ class ConvSQAE:
             expectation value of readout bit
 
         """
-
-        # choose trash initialization
-        #for indx, i in enumerate(range(self.data_qbits, self.data_qbits + self.trash_qbits)):
-        #    qml.RX(self.rnd_init[indx], wires=i)
-        #    qml.Hadamard(wires=i)
-
         self.encoder(params, data)
 
         # swap test
@@ -171,6 +142,16 @@ class ConvSQAE:
 
         return qml.expval(measure_gate(bit))
 
+    def plot_circuit(self):
+        """Plots the circuit with dummy data
+        """
+
+        data = torch.rand(self.data_shape, dtype=torch.float32)
+
+        fig, _ = qml.draw_mpl(self.circuit_node)(self.params, data)
+        fig.show()
+        
+    
     def plot_latent_space(self, latent_bit, x_test_bg, x_test_signal, save_fig=None):
         """Plots the bloch sphere of a chosen qbit for given signal and background data
 
@@ -182,7 +163,7 @@ class ConvSQAE:
 
         """
 
-        b = Bloch()
+        b = qutip.Bloch()
         points_bg_x = [self.latent_node(self.params, i, latent_bit, qml.PauliX) for i in x_test_bg]
         points_bg_y = [self.latent_node(self.params, i, latent_bit, qml.PauliY) for i in x_test_bg]
         points_bg_z = [self.latent_node(self.params, i, latent_bit, qml.PauliZ) for i in x_test_bg]
@@ -206,15 +187,6 @@ class ConvSQAE:
         else:
             b.show()
         b.clear()
-
-    def plot_circuit(self):
-        """Plots the circuit with dummy data
-        """
-
-        data = np.random.uniform(size=self.data_shape)
-
-        fig, _ = qml.draw_mpl(self.circuit_node)(self.params, data)
-        fig.show()
 
     # def train(self, x_train, x_val, learning_rate, epochs, batch_size,
     #           print_step_size=20, make_animation=False, save_auc=False, x_val_signal=None):
