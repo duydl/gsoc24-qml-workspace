@@ -28,7 +28,7 @@ class ContrastiveConvEncoderCircuit:
         self.total_qbits = input_qbits * 2 + aux_qbits
         self.trash_qbits = input_qbits - latent_qbits
         
-        self.circuit_node = qml.QNode(self.circuit, device, interface="torch")
+        self.circuit_node = qml.QNode(self.circuit, device, interface="torch", diff_method=diff_method)
 
         self.kernel_size = kernel_size
         self.stride = stride
@@ -39,7 +39,7 @@ class ContrastiveConvEncoderCircuit:
         self.parameters_shape = (DRCs * 2 * self.number_of_kernel_uploads * kernel_size ** 2,)
         self.params_per_layer = self.parameters_shape[0] // DRCs
 
-    def _conv_upload(self, params, img, kernel_size, stride, wires, wire=0):
+    def _conv_upload(self, params, img, kernel_size, stride, wire=0):
         """Upload image using the convolution like method
 
         Args:
@@ -67,25 +67,19 @@ class ContrastiveConvEncoderCircuit:
                     qml.RZ(params[i * 2] + params[i * 2 + 1] * d, wires=wire)
         
         number_of_kernel_uploads = len(list(range(0, img.shape[1]-kernel_size+1, stride))) * len(list(range(0, img.shape[0]-kernel_size+1, stride)))
-        # number_of_kernel_uploads = 9 ## Error in calculate number_of_kernel_uploads
+
         params_per_upload = len(params) // number_of_kernel_uploads
 
         upload_counter = 0
-        # wire = self.total_qbits - 1
-        # print("HERE")
-        # print(img.shape, kernel_size, stride)
-        wire = -1
+
         for y in range(0, img.shape[1]-kernel_size+1, stride):
             for x in range(0, img.shape[0]-kernel_size+1, stride):
-                # print(y, y+kernel_size, x, x+kernel_size)
-                # print("imgae slide", img[y:y+kernel_size, x:x+kernel_size])
-                # print( wires[wire])
                 single_upload(params[upload_counter * params_per_upload: (upload_counter + 1) * params_per_upload],
-                                   img[x:x+kernel_size, y:y+kernel_size], wires[wire])
+                                   img[x:x+kernel_size, y:y+kernel_size], wire)
                 upload_counter = upload_counter + 1
-                wire = wire - 1
+                wire = wire + 1
 
-    def encoder_1(self, params, inputs):
+    def encoder(self, params, inputs, wires):
         """The encoder circuit for the SQAE
 
         Args:
@@ -93,64 +87,44 @@ class ContrastiveConvEncoderCircuit:
             inputs (list): inputs to upload
         """
         def circular_entanglement(wires):
-            qml.CNOT(wires=[wires[-1] + 1, wires[0]])
-            for i in wires:
+            qml.CNOT(wires=[wires[-1], wires[0]])
+            for i in wires[:-1]:
                 qml.CNOT(wires=[i, i+1])
 
         for i in range(self.DRCs):
             self._conv_upload(
                 params[i * self.params_per_layer:(i + 1) * self.params_per_layer], 
                 inputs, self.kernel_size, self.stride, 
-                list(range(self.number_of_kernel_uploads)),
-                wire=0
+                wire=wires[0]
                 )
-            circular_entanglement(list(range(0, self.number_of_kernel_uploads - 1)))
-            
-    def encoder_2(self, params, inputs):
-        """The encoder circuit for the SQAE
+            circular_entanglement(wires)
+
+    def circuit(self, params, input_1, input_2):
+        """Full circuit to be used as Constrastive CNN
+
+        Includes two encoders and SWAP test
 
         Args:
-            params (list): parameters to use
-            inputs (list): inputs to upload
-        """
-        def circular_entanglement(wires):
-            qml.CNOT(wires=[wires[0], wires[-1] + 1])
-            for i in wires[::-1]:
-                qml.CNOT(wires=[i+1, i])
-
-        for i in range(self.DRCs):
-            self._conv_upload(
-                params[i * self.params_per_layer:(i + 1) * self.params_per_layer], 
-                inputs, self.kernel_size, self.stride, 
-                list(range(self.total_qbits - self.number_of_kernel_uploads, self.total_qbits)),
-                wire=self.total_qbits-1
-                )
-            circular_entanglement(list(range(self.total_qbits - self.number_of_kernel_uploads, self.total_qbits - 1)))
-
-    def circuit(self, params, inputs1, inputs2):
-        """Full circuit to be used as SQAE
-
-        includes encoder and SWAP test
-
-        Args:
-            params (list): parameters to be used for PQC
-            inputs (list): inputs for the circuit
+            params (list): shared parameters for two encoding PQC
+            input_1 (list): image 1 input
+            input_2 (list): image 2 input
 
         Returns:
             expectation value of readout bit
 
         """
-        # print("2 circuit", inputs.shape)
-        self.encoder_1(params, inputs1)
-        self.encoder_2(params, inputs2)
+        wire_1 = list(range(self.number_of_kernel_uploads))
+        wire_2 = list(range(self.number_of_kernel_uploads, self.number_of_kernel_uploads*2))
+        self.encoder(params, input_1, wire_1)
+        self.encoder(params, input_2, wire_2)
 
-        # swap test
-        qml.Hadamard(wires=self.total_qbits//2)
+        # SWAP test
+        qml.Hadamard(wires=self.total_qbits - 1)
         for i in range(self.latent_qbits):
-            qml.CSWAP(wires=[self.total_qbits//2, self.total_qbits//2 + i + 2, self.total_qbits//2 - i - 2])
-        qml.Hadamard(wires=self.total_qbits//2)
+            qml.CSWAP(wires=[self.total_qbits - 1, 0 + i, self.number_of_kernel_uploads + i])
+        qml.Hadamard(wires=self.total_qbits - 1)
 
-        return qml.expval(qml.PauliZ(self.total_qbits//2))
+        return qml.expval(qml.PauliZ(self.total_qbits - 1))
 
     def plot_circuit(self):
         """Plots the circuit with dummy inputs
@@ -162,5 +136,12 @@ class ContrastiveConvEncoderCircuit:
         fig, _ = qml.draw_mpl(self.circuit_node)(params, input1, input2)
         fig.show()
 
+    def draw_circuit(self):
+        """Draw text-based circuit to check if similar values are uploaded to the two encoders
+        """
 
+        inputs = torch.rand(self.input_shape)
+        params = torch.rand(self.parameters_shape)
+        print(self.circuit_node(params, inputs, inputs))
+        print(qml.draw(self.circuit)(params, inputs, inputs))
 
