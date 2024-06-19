@@ -6,8 +6,8 @@ from torchvision import datasets, transforms as T
 from torch.utils.data import DataLoader, random_split, Subset
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
-from models.classical.mlp import MNISTSupContrast
-from utils.utils import generate_embeddings, pca_proj, tsne_proj, vmf_kde_on_circle
+from models.hybrid.hybrid_contrastive import MNISTQSupContrast
+from utils.utils import generate_embeddings, pca_proj, tsne_proj
 
 import matplotlib.pyplot as plt
 
@@ -40,24 +40,22 @@ def main():
     """
     train_loader, val_loader = load_data()
 
-    model = MNISTSupContrast(activ_type="relu", pool_type="max", head_output=2, lr=1e-3)
+    model = MNISTQSupContrast(activ_type="relu", pool_type="max", head_output=2, lr=1e-3, n_qlayers=1)
 
     # Plot embeddings before training
     embeddings, labels = generate_embeddings(model, val_loader)
-    # pca_proj(embeddings, labels)
-    # tsne_proj(embeddings, labels)
-    vmf_kde_on_circle(embeddings, labels)
+    pca_proj(embeddings, labels)
+    tsne_proj(embeddings, labels)
 
     # Training the model
     logger = CSVLogger(save_dir="logs/", name="MNISTContrast", version=0)
-    trainer = Trainer(max_epochs=5, logger=logger, gpus=1 if torch.cuda.is_available() else 0)
+    trainer = Trainer(max_epochs=10, logger=logger, gpus=0)
     trainer.fit(model, train_loader, val_loader)
 
     # Plot embeddings after training
     embeddings, labels = generate_embeddings(model, val_loader)
-    # pca_proj(embeddings, labels)
-    # tsne_proj(embeddings, labels)
-    vmf_kde_on_circle(embeddings, labels)
+    pca_proj(embeddings, labels)
+    tsne_proj(embeddings, labels)
 
     # Plot training and validation loss
     metrics_df = pd.read_csv(f"{logger.log_dir}/metrics.csv")
