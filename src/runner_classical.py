@@ -3,42 +3,33 @@ import torch
 import numpy as np
 import pandas as pd
 from torchvision import datasets, transforms as T
-from torch.utils.data import DataLoader, random_split, Subset
+from torch.utils.data import DataLoader, random_split, Subset, TensorDataset
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
-from models.classical.mlp import MNISTSupContrast
-from utils.utils import generate_embeddings, pca_proj, tsne_proj, vmf_kde_on_circle
+from models.classical.models import MNISTSupContrast
+from utils.utils import generate_embeddings, vmf_kde_on_circle, pca_proj, tsne_proj
+from utils.data_mnist import load_mnist_data
 
 import matplotlib.pyplot as plt
-
-def load_data():
-    """
-    Load and preprocess the MNIST dataset.
-
-    Returns:
-        tuple: Training and validation data loaders.
-    """
-    transform = T.Compose([T.ToTensor(), T.Normalize((0.1307,), (0.3081,))])
-    dataset = datasets.MNIST(root="../data/", train=True, download=True, transform=transform)
-
-    filtered_indices = [i for i, (_, label) in enumerate(dataset) if label in [0, 1, 5]]
-    filtered_dataset = Subset(dataset, filtered_indices)
-
-    train_size = int(0.9 * len(filtered_dataset))
-    val_size = len(filtered_dataset) - train_size
-    train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
-
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=12)
-    val_loader = DataLoader(val_dataset, batch_size=64, num_workers=12)
-
-    return train_loader, val_loader
 
 # Initialize model
 def main():
     """
     Main function to train the model and generate embeddings.
     """
-    train_loader, val_loader = load_data()
+    classes = (3, 6, 9)
+    reduced_dim = 10
+    dataset_size = (1000, 300)
+
+    mnist_data = load_mnist_data(classes=classes, reduced_dim = reduced_dim, dataset_size=dataset_size, data_dir="../data/")
+    
+    def create_data_loader(data, labels, batch_size=64, shuffle=True, num_workers=4):
+        dataset = TensorDataset(data, labels)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+        return data_loader
+    
+    train_loader = create_data_loader(mnist_data["train_data"], mnist_data["train_labels"])
+    val_loader = create_data_loader(mnist_data["test_data"], mnist_data["test_labels"])
 
     model = MNISTSupContrast(activ_type="relu", pool_type="max", head_output=2, lr=1e-3)
 
@@ -50,7 +41,7 @@ def main():
 
     # Training the model
     logger = CSVLogger(save_dir="logs/", name="MNISTContrast", version=0)
-    trainer = Trainer(max_epochs=5, logger=logger, gpus=1 if torch.cuda.is_available() else 0)
+    trainer = Trainer(max_epochs=20, logger=logger, gpus=1 if torch.cuda.is_available() else 0)
     trainer.fit(model, train_loader, val_loader)
 
     # Plot embeddings after training

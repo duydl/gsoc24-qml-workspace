@@ -30,10 +30,10 @@ class MNISTConvEncoder(nn.Module):
     """
     A convolutional encoder for MNIST images.
     """
-    backbone_output_size = 196
+    backbone_output_size = 100
     def __init__(self, activ_type, pool_type):
         super().__init__()
-        self.conv_unit1 = ConvUnit(1, 4, 3, 1, 1, pool_type, 2, 2, activ_type)
+        self.conv_unit1 = ConvUnit(1, 4, 3, 1, 1, pool_type, 1, 1, activ_type)
         self.conv_unit2 = ConvUnit(4, 4, 3, 1, 1, pool_type, 2, 2, activ_type)
 
     def forward(self, x):

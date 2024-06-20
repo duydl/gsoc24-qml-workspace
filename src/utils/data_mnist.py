@@ -3,7 +3,7 @@ from torchvision import datasets, transforms
 import numpy as np
 import matplotlib.pyplot as plt
     
-def load_mnist_data(classes=None, reduced_dim=None, dataset_size=None):
+def load_mnist_data(classes=None, reduced_dim=None, dataset_size=None, data_dir="../../data"):
     """
     Load and preprocess MNIST data.
 
@@ -16,8 +16,8 @@ def load_mnist_data(classes=None, reduced_dim=None, dataset_size=None):
         dict: A dictionary with the preprocessed training and test datasets.
     """
     # Load MNIST dataset
-    train_dataset = datasets.MNIST(root='../../data', train=True, download=False, transform=transforms.ToTensor())
-    test_dataset = datasets.MNIST(root='../../data', train=False, download=False, transform=transforms.ToTensor())
+    train_dataset = datasets.MNIST(root=data_dir, train=True, download=False, transform=transforms.ToTensor())
+    test_dataset = datasets.MNIST(root=data_dir, train=False, download=False, transform=transforms.ToTensor())
 
     # # Normalize the datasets
     # transform = transforms.Compose([
