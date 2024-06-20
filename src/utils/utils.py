@@ -72,6 +72,64 @@ def tsne_proj(embeddings, labels, seed=1):
     sns.scatterplot(x=proj[:, 0], y=proj[:, 1], hue=labels, palette=sns.color_palette("tab10")).set(title="T-SNE")
     plt.show()
 
+def gaussian_kde_2d(embeddings, labels):
+    """
+    Plot Gaussian KDE for embeddings in R2.
+
+    Args:
+        embeddings (np.ndarray): Embedding vectors.
+        labels (np.ndarray): Corresponding labels.
+    """
+    sns.kdeplot(x=embeddings[:, 0], y=embeddings[:, 1], hue=labels, fill=True, palette=sns.color_palette("tab10"))
+    plt.title("Gaussian KDE in R2")
+    plt.show()
+
+def vmf_kde_angles(embeddings, labels, bins=100):
+    """
+    Plot von Mises-Fisher KDE for angles.
+
+    Args:
+        embeddings (np.ndarray): Embedding vectors.
+        labels (np.ndarray): Corresponding labels.
+        bins (int): Number of bins for histogram.
+    """
+    angles = np.arctan2(embeddings[:, 1], embeddings[:, 0])
+    unique_labels = np.unique(labels)
+
+    plt.figure(figsize=(10, 6))
+    for label in unique_labels:
+        label_angles = angles[labels == label]
+        sns.kdeplot(label_angles, fill=True, label=f"Label {label}", bw_adjust=0.5)
+
+    plt.title("von Mises-Fisher KDE on Angles")
+    plt.xlabel("Angle (radians)")
+    plt.legend()
+    plt.show()
+
+def vmf_kde_on_circle(embeddings, labels):
+    """
+    Plot embeddings as a scatter plot on a circle.
+
+    Args:
+        embeddings (np.ndarray): Embedding vectors.
+        labels (np.ndarray): Corresponding labels.
+    """
+    angles = np.arctan2(embeddings[:, 1], embeddings[:, 0])
+    radii = np.ones_like(angles)  # Set radius to 1 for all points
+    unique_labels = np.unique(labels)
+
+    plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111, projection='polar')
+    for label in unique_labels:
+        label_angles = angles[labels == label]
+        ax.scatter(label_angles, radii[labels == label], label=f"Label {label}", alpha=0.75)
+
+    ax.set_title("Scatter VMF KDE Plot")
+    ax.set_ylim(0, 1.5)  # Extend the radius slightly for better visualization
+    ax.set_yticks([])  # Remove radial ticks
+    ax.legend()
+    plt.show()
+
 def generate_embeddings(model, data_loader):
     """
     Generate embeddings for the given data using the provided model.
