@@ -3,7 +3,7 @@ from torchvision import datasets, transforms
 import numpy as np
 import matplotlib.pyplot as plt
     
-def load_mnist_data(classes=(3, 6), reduced_dim=None, dataset_size=None):
+def load_mnist_data(classes=None, reduced_dim=None, dataset_size=None):
     """
     Load and preprocess MNIST data.
 
@@ -34,16 +34,17 @@ def load_mnist_data(classes=(3, 6), reduced_dim=None, dataset_size=None):
         return dataset
     
     # Filter out only the specified classes
-    train_dataset = filter_classes(train_dataset, classes)
-    test_dataset = filter_classes(test_dataset, classes)
+    if classes:
+        train_dataset = filter_classes(train_dataset, classes)
+        test_dataset = filter_classes(test_dataset, classes)
 
-    # Create binary labels for the specified classes
-    def create_binary_labels(dataset, positive_class):
-        dataset.targets = (dataset.targets == positive_class).long()
-        return dataset
+    # # Create binary labels for the specified classes
+    # def create_binary_labels(dataset, positive_class):
+    #     dataset.targets = (dataset.targets == positive_class).long()
+    #     return dataset
 
-    train_dataset = create_binary_labels(train_dataset, classes[0])
-    test_dataset = create_binary_labels(test_dataset, classes[0])
+    # train_dataset = create_binary_labels(train_dataset, classes[0])
+    # test_dataset = create_binary_labels(test_dataset, classes[0])
 
      # Resize images
     if reduced_dim:
@@ -70,29 +71,38 @@ def load_mnist_data(classes=(3, 6), reduced_dim=None, dataset_size=None):
         "test_labels": test_dataset.targets
     }
 
-def visualize_data(data, labels, title=""):
+def visualize_data(data, labels, classes, title=""):
     """
     Visualize the dataset.
 
     Args:
         data (torch.Tensor): Dataset images.
         labels (torch.Tensor): Corresponding labels.
+        classes (tuple): Tuple of class labels to visualize.
         title (str): Title of the plot (default is "").
     """
-    fig, axs = plt.subplots(1, 2, figsize=(8, 4))
-    axs[0].imshow(data[labels == 0][0].squeeze(), cmap='binary')
-    axs[0].set_title(f"Class {labels[labels == 0][0].item()}")
-    axs[1].imshow(data[labels == 1][0].squeeze(), cmap='binary')
-    axs[1].set_title(f"Class {labels[labels == 1][0].item()}")
+    fig, axs = plt.subplots(1, len(classes), figsize=(8, 4))
+
+    for i, cls in enumerate(classes):
+        class_data = data[labels == cls]
+        if len(class_data) > 0:
+            axs[i].imshow(class_data[0].squeeze(), cmap='binary')
+            axs[i].set_title(f"Class {cls}")
+        else:
+            axs[i].set_title(f"Class {cls} (No data)")
     fig.suptitle(title)
     plt.show()
 
 if __name__ == "__main__":
-    
+    # Define the classes and size
+    classes = (3, 6, 9)
+    reduced_dim = 10
+    dataset_size = (1000, 300)
+
     # Load and preprocess the MNIST data
-    mnist_data_original = load_mnist_data(classes=(3, 6), dataset_size=(1000, 300))
-    mnist_data_resized = load_mnist_data(classes=(3, 6), reduced_dim=10, dataset_size=(1000, 300))
+    mnist_data_original = load_mnist_data(classes=classes, dataset_size=dataset_size)
+    mnist_data_resized = load_mnist_data(classes=classes, reduced_dim=reduced_dim, dataset_size=dataset_size)
     
     # Visualize the preprocessed images
-    visualize_data(mnist_data_original["train_data"], mnist_data_original["train_labels"], title="Original MNIST Data")
-    visualize_data(mnist_data_resized["train_data"], mnist_data_resized["train_labels"], title="Preprocessed MNIST Data")
+    visualize_data(mnist_data_original["train_data"], mnist_data_original["train_labels"], classes, title="Original MNIST Data")
+    visualize_data(mnist_data_resized["train_data"], mnist_data_resized["train_labels"], classes, title="Preprocessed MNIST Data")
