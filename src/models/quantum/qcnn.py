@@ -25,7 +25,7 @@ class ConvEncoderCircuit:
         self.latent_qbits = latent_qbits
         self.trash_qbits = self.input_qbits - self.latent_qbits
         self.total_qbits = input_qbits + self.trash_qbits + 1
-        self.circuit_node = qml.QNode(self.circuit, device, interface="torch")
+        self.circuit_node = qml.QNode(self.circuit, device, interface="torch", diff_method=diff_method)
         self.latent_node = qml.QNode(self.visualize_latent_circuit, device, interface="torch")
 
         self.auc_hist = []

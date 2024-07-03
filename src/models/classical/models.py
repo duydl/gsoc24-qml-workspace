@@ -8,6 +8,7 @@ from pytorch_metric_learning import losses
 import sys
 sys.path.append("../../")
 from utils.utils import get_preprocessing
+# from ...utils.utils import get_preprocessing
 
 _ACTIVATIONS = {"relu": nn.ReLU, "gelu": nn.GELU}
 _POOLING = {"max": nn.MaxPool2d, "avg": nn.AvgPool2d}
@@ -63,6 +64,7 @@ class MNISTSupContrast(pl.LightningModule):
         self.encoder = MNISTConvEncoder(activ_type, pool_type)
         self.head = LinearHead(MNISTConvEncoder.backbone_output_size, head_output)
         self.loss = losses.ContrastiveLoss(pos_margin=pos_margin, neg_margin=neg_margin)
+        # self.loss = nn.CrossEntropyLoss()
         self.train_loss = torchmetrics.MeanMetric()
         self.valid_loss = torchmetrics.MeanMetric()
 
@@ -87,7 +89,59 @@ class MNISTSupContrast(pl.LightningModule):
             x = self.preprocessing(x)
         embeddings = self.forward(x)
         loss = self.loss(embeddings, y)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+
+class MNISTClassify(pl.LightningModule):
+    """
+    A PyTorch Lightning module for supervised classification on the MNIST dataset.
+    """
+    def __init__(self, activ_type, pool_type, head_output, classes, lr, preprocess=None):
+        super().__init__()
+        self.save_hyperparameters()
+        self.preprocessing = get_preprocessing(preprocess)
+        self.encoder = MNISTConvEncoder(activ_type, pool_type)
+        self.head = LinearHead(MNISTConvEncoder.backbone_output_size, head_output)
+
+        self.classify = nn.Linear(head_output, len(classes) )
+
+        self.loss = nn.CrossEntropyLoss()
+        self.train_loss = torchmetrics.MeanMetric()
+        self.valid_loss = torchmetrics.MeanMetric()
+        
+        self.custom_classes = classes  # (e.g., (0, 3, 6))
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(classes)}
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.head(x)
+        return self.classify(x)
+
+    def map_labels(self, labels):
+        mapped_labels = torch.tensor([self.class_to_idx[int(label)] for label in labels], device=self.device)
+        return mapped_labels
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        if self.preprocessing:
+            x = self.preprocessing(x)
+        logits = self.forward(x)
+        loss = self.loss(logits, self.map_labels(y))
+        self.train_loss.update(loss)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        if self.preprocessing:
+            x = self.preprocessing(x)
+        logits = self.forward(x)
+        loss = self.loss(logits, self.map_labels(y))
+        self.valid_loss.update(loss)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
