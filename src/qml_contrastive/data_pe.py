@@ -44,7 +44,7 @@ def inspect_h5py_file(file_path):
 
         f.visititems(print_attrs)
 
-def load_particle_data(electron_file, photon_file, reduced_dim=None, dataset_size=-1, channel=0):
+def load_pe_data(electron_file, photon_file, reduced_dim=None, dataset_size=-1, channel=0):
     """
     Load and preprocess electron and photon data.
 
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     dataset_size = 1000
 
     # Load and preprocess the particle data
-    particle_data = load_particle_data(electron_file, photon_file, reduced_dim=16, dataset_size=dataset_size, channel=1)
+    particle_data = load_pe_data(electron_file, photon_file, reduced_dim=16, dataset_size=dataset_size, channel=1)
     
     # Visualize the preprocessed images
     train_data = particle_data["train_dataset"].data

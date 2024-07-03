@@ -1,12 +1,14 @@
-import torch
+import torch, kornia
 import torch.nn.functional as F
+import torchvision.transforms as T
 import numpy as np
+import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+
 import seaborn as sns
 import matplotlib.pyplot as plt
-import kornia
-import torchvision.transforms as T
+
 
 def contrastive_loss_with_margins(embeddings, labels, pos_margin=0.25, neg_margin=1.5):
     """
@@ -96,7 +98,6 @@ def vmf_kde_angles(embeddings, labels, bins=100):
     angles = np.arctan2(embeddings[:, 1], embeddings[:, 0])
     unique_labels = np.unique(labels)
 
-    plt.figure(figsize=(10, 6))
     for label in unique_labels:
         label_angles = angles[labels == label]
         sns.kdeplot(label_angles, fill=True, label=f"Label {label}", bw_adjust=0.5)
@@ -118,7 +119,6 @@ def vmf_kde_on_circle(embeddings, labels):
     radii = np.ones_like(angles)  # Set radius to 1 for all points
     unique_labels = np.unique(labels)
 
-    plt.figure(figsize=(8, 8))
     ax = plt.subplot(111, projection='polar')
     for label in unique_labels:
         label_angles = angles[labels == label]
@@ -128,6 +128,24 @@ def vmf_kde_on_circle(embeddings, labels):
     ax.set_ylim(0, 1.5)  # Extend the radius slightly for better visualization
     ax.set_yticks([])  # Remove radial ticks
     ax.legend()
+    plt.show()
+
+def plot_training(logdir):
+    # Plot training and validation loss
+    metrics_df = pd.read_csv(f"{logdir}/metrics.csv")
+    train_loss_epoch = metrics_df['train_loss'].dropna().reset_index(drop=True)
+    val_loss_epoch = metrics_df['val_loss'].dropna().reset_index(drop=True)
+    min_length = min(len(train_loss_epoch), len(val_loss_epoch))
+    train_loss_epoch = train_loss_epoch[:min_length]
+    val_loss_epoch = val_loss_epoch[:min_length]
+
+    plt.plot(train_loss_epoch, label='Train Loss')
+    plt.plot(val_loss_epoch, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Train vs Validation Loss Over Epochs')
+    plt.legend()
+    plt.grid(True)
     plt.show()
 
 def generate_embeddings(model, data_loader):

@@ -5,10 +5,7 @@ import pytorch_lightning as pl
 import torchmetrics
 from pytorch_metric_learning import losses
 
-import sys
-sys.path.append("../../")
-from utils.utils import get_preprocessing
-# from ...utils.utils import get_preprocessing
+from ..utils import get_preprocessing
 
 _ACTIVATIONS = {"relu": nn.ReLU, "gelu": nn.GELU}
 _POOLING = {"max": nn.MaxPool2d, "avg": nn.AvgPool2d}
