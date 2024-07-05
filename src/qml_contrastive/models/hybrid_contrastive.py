@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 
 from pytorch_metric_learning import losses
 
-from ...utils import get_preprocessing
-from ..classical import MNISTConvEncoder
+from ..utils import get_preprocessing
+from .classical import MNISTConvEncoder
 
 
 class QuantumHead(nn.Module):
