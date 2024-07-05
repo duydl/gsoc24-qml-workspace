@@ -6,7 +6,7 @@ from torchvision import datasets, transforms as T
 from torch.utils.data import DataLoader, random_split, Subset, TensorDataset
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
-from models.classical.models import MNISTSupContrast, MNISTClassify
+from models.classical.models import Conv_Siamese, Conv_Classifier
 from utils.utils import generate_embeddings, vmf_kde_on_circle, pca_proj, tsne_proj
 from utils.data_mnist import load_mnist_data
 
@@ -31,8 +31,8 @@ def main():
     train_loader = create_data_loader(mnist_data["train_data"], mnist_data["train_labels"])
     val_loader = create_data_loader(mnist_data["test_data"], mnist_data["test_labels"], shuffle=False)
 
-    # model = MNISTSupContrast(activ_type="relu", pool_type="max", head_output=2, lr=1e-3)
-    model = MNISTClassify(activ_type="relu", pool_type="max", head_output=2, classes=classes, lr=1e-3)
+    # model = Conv_Siamese(activ_type="relu", pool_type="max", head_output=2, lr=1e-3)
+    model = Conv_Classifier(activ_type="relu", pool_type="max", head_output=2, classes=classes, lr=1e-3)
 
     # Plot embeddings before training
     embeddings, labels = generate_embeddings(model, val_loader)

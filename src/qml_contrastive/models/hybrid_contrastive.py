@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from pytorch_metric_learning import losses
 
 from ..utils import get_preprocessing
-from .classical import MNISTConvEncoder
+from .classical import ConvEncoder
 
 
 class QuantumHead(nn.Module):
@@ -58,7 +58,7 @@ class QuantumHead(nn.Module):
         q_outputs = self.quantum_layer(q_inputs)
         return q_outputs
 
-class MNISTHybridSupContrast(pl.LightningModule):
+class Hybrid_Contrastive(pl.LightningModule):
     """
     A PyTorch Lightning module for supervised contrastive learning on the MNIST dataset.
     """
@@ -66,8 +66,8 @@ class MNISTHybridSupContrast(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.preprocessing = get_preprocessing(preprocess)
-        self.encoder = MNISTConvEncoder(activ_type, pool_type)
-        self.head = QuantumHead(MNISTConvEncoder.backbone_output_size, n_qubits, head_output, n_qlayers)
+        self.encoder = ConvEncoder(activ_type, pool_type)
+        self.head = QuantumHead(ConvEncoder.backbone_output_size, n_qubits, head_output, n_qlayers)
         self.loss = losses.ContrastiveLoss(pos_margin=pos_margin, neg_margin=neg_margin)
         self.train_loss = torchmetrics.MeanMetric()
         self.valid_loss = torchmetrics.MeanMetric()

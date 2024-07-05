@@ -24,7 +24,7 @@ class ConvUnit(nn.Module):
     def forward(self, x):
         return self.pool(self.activ(self.bn(self.conv(x))))
 
-class MNISTConvEncoder(nn.Module):
+class ConvEncoder(nn.Module):
     """
     A convolutional encoder for MNIST images.
     """
@@ -50,18 +50,17 @@ class LinearHead(nn.Module):
     def forward(self, x):
         return self.head(x)
 
-class MNISTSupContrast(pl.LightningModule):
+class Conv_Siamese(pl.LightningModule):
     """
-    A PyTorch Lightning module for supervised contrastive learning on the MNIST dataset.
+    A PyTorch Lightning module for supervised contrastive learning.
     """
     def __init__(self, activ_type, pool_type, head_output, lr, pos_margin=0.25, neg_margin=1.5, preprocess=None):
         super().__init__()
         self.save_hyperparameters()
         self.preprocessing = get_preprocessing(preprocess)
-        self.encoder = MNISTConvEncoder(activ_type, pool_type)
-        self.head = LinearHead(MNISTConvEncoder.backbone_output_size, head_output)
+        self.encoder = ConvEncoder(activ_type, pool_type)
+        self.head = LinearHead(ConvEncoder.backbone_output_size, head_output)
         self.loss = losses.ContrastiveLoss(pos_margin=pos_margin, neg_margin=neg_margin)
-        # self.loss = nn.CrossEntropyLoss()
         self.train_loss = torchmetrics.MeanMetric()
         self.valid_loss = torchmetrics.MeanMetric()
 
@@ -92,16 +91,16 @@ class MNISTSupContrast(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
 
 
-class MNISTClassify(pl.LightningModule):
+class Conv_Classifier(pl.LightningModule):
     """
-    A PyTorch Lightning module for supervised classification on the MNIST dataset.
+    A PyTorch Lightning module for supervised classification.
     """
     def __init__(self, activ_type, pool_type, head_output, classes, lr, preprocess=None):
         super().__init__()
         self.save_hyperparameters()
         self.preprocessing = get_preprocessing(preprocess)
-        self.encoder = MNISTConvEncoder(activ_type, pool_type)
-        self.head = LinearHead(MNISTConvEncoder.backbone_output_size, head_output)
+        self.encoder = ConvEncoder(activ_type, pool_type)
+        self.head = LinearHead(ConvEncoder.backbone_output_size, head_output)
 
         self.classify = nn.Linear(head_output, len(classes) )
 

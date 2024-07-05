@@ -6,7 +6,7 @@ from torchvision import datasets, transforms as T
 from torch.utils.data import DataLoader, random_split, Subset, TensorDataset
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
-from models.hybrid.hybrid_contrastive import MNISTHybridSupContrast
+from models.hybrid.hybrid_contrastive import Hybrid_Contrastive
 from utils.utils import generate_embeddings, vmf_kde_on_circle, pca_proj, tsne_proj
 from utils.data_mnist import load_mnist_data
 
@@ -31,7 +31,7 @@ def main():
     train_loader = create_data_loader(mnist_data["train_data"], mnist_data["train_labels"])
     val_loader = create_data_loader(mnist_data["test_data"], mnist_data["test_labels"])
 
-    model = MNISTHybridSupContrast(activ_type="relu", pool_type="max", n_qubits=8, head_output=2, lr=1e-3, n_qlayers=3)
+    model = Hybrid_Contrastive(activ_type="relu", pool_type="max", n_qubits=8, head_output=2, lr=1e-3, n_qlayers=3)
 
     # Plot embeddings before training
     embeddings, labels = generate_embeddings(model, val_loader)
