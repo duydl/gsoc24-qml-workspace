@@ -1,4 +1,4 @@
-import torch, kornia
+import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
 import numpy as np

@@ -41,7 +41,7 @@ def main():
 
     # Training the model
     logger = CSVLogger(save_dir="logs/", name="MNISTQContrast", version=0)
-    trainer = Trainer(max_epochs=10, logger=logger, gpus=0)
+    trainer = Trainer(max_epochs=10, logger=logger, devices=0)
     trainer.fit(model, train_loader, val_loader)
 
     # Plot embeddings after training

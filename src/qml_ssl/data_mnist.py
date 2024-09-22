@@ -95,8 +95,8 @@ def visualize_data(data, labels, classes, title=""):
 
 if __name__ == "__main__":
     # Define the classes and size
-    classes = (3, 6, 9)
-    reduced_dim = 10
+    classes = (3, 6, 8)
+    reduced_dim = 16
     dataset_size = (1000, 300)
 
     # Load and preprocess the MNIST data

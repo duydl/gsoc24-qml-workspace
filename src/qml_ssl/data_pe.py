@@ -124,7 +124,7 @@ if __name__ == "__main__":
     inspect_h5py_file(electron_file)
     inspect_h5py_file(photon_file)
     
-    reduced_dim = 10
+    reduced_dim = 16
     dataset_size = 1000
 
     # Load and preprocess the particle data

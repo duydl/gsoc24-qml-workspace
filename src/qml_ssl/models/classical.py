@@ -29,15 +29,18 @@ class ConvEncoder(nn.Module):
     A convolutional encoder for MNIST images.
     """
     backbone_output_size = 100
-    def __init__(self, activ_type, pool_type):
+    def __init__(self, activ_type, pool_type, channel_nums):
         super().__init__()
-        self.conv_unit1 = ConvUnit(1, 4, 3, 1, 1, pool_type, 1, 1, activ_type)
-        self.conv_unit2 = ConvUnit(4, 4, 3, 1, 1, pool_type, 2, 2, activ_type)
+        self.conv_unit1 = ConvUnit(1, 4, 3, 1, 1, pool_type, 2, 2, activ_type)
+        self.conv_unit2 = ConvUnit(4, channel_nums, 3, 1, 1, pool_type, 2, 2, activ_type)
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
     def forward(self, x):
         x = self.conv_unit1(x)
         x = self.conv_unit2(x)
-        return x.view(-1, self.backbone_output_size)
+        x = self.global_pool(x)
+        x = torch.flatten(x, 1)
+        return x
 
 class LinearHead(nn.Module):
     """
@@ -54,12 +57,12 @@ class Conv_Siamese(pl.LightningModule):
     """
     A PyTorch Lightning module for supervised contrastive learning.
     """
-    def __init__(self, activ_type, pool_type, head_output, lr, pos_margin=0.25, neg_margin=1.5, preprocess=None):
+    def __init__(self, activ_type, pool_type, channel_nums, head_output, lr, pos_margin=0.25, neg_margin=1.5, preprocess=None):
         super().__init__()
         self.save_hyperparameters()
         self.preprocessing = get_preprocessing(preprocess)
-        self.encoder = ConvEncoder(activ_type, pool_type)
-        self.head = LinearHead(ConvEncoder.backbone_output_size, head_output)
+        self.encoder = ConvEncoder(activ_type, pool_type, channel_nums)
+        self.head = LinearHead(channel_nums, head_output)
         self.loss = losses.ContrastiveLoss(pos_margin=pos_margin, neg_margin=neg_margin)
         self.train_loss = torchmetrics.MeanMetric()
         self.valid_loss = torchmetrics.MeanMetric()
@@ -95,12 +98,12 @@ class Conv_Classifier(pl.LightningModule):
     """
     A PyTorch Lightning module for supervised classification.
     """
-    def __init__(self, activ_type, pool_type, head_output, classes, lr, preprocess=None):
+    def __init__(self, activ_type, pool_type, channel_nums, head_output, classes, lr, preprocess=None):
         super().__init__()
         self.save_hyperparameters()
         self.preprocessing = get_preprocessing(preprocess)
-        self.encoder = ConvEncoder(activ_type, pool_type)
-        self.head = LinearHead(ConvEncoder.backbone_output_size, head_output)
+        self.encoder = ConvEncoder(activ_type, pool_type, channel_nums)
+        self.head = LinearHead(channel_nums, head_output)
 
         self.classify = nn.Linear(head_output, len(classes) )
 

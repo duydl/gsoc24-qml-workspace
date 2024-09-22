@@ -31,8 +31,8 @@ def main():
     train_loader = create_data_loader(mnist_data["train_data"], mnist_data["train_labels"])
     val_loader = create_data_loader(mnist_data["test_data"], mnist_data["test_labels"], shuffle=False)
 
-    # model = Conv_Siamese(activ_type="relu", pool_type="max", head_output=2, lr=1e-3)
-    model = Conv_Classifier(activ_type="relu", pool_type="max", head_output=2, classes=classes, lr=1e-3)
+    # model = Conv_Siamese(activ_type="relu", pool_type="max", channel_nums=8, head_output=2, lr=1e-3)
+    model = Conv_Classifier(activ_type="relu", pool_type="max", channel_nums=8, head_output=2, classes=classes, lr=1e-3)
 
     # Plot embeddings before training
     embeddings, labels = generate_embeddings(model, val_loader)
@@ -42,7 +42,7 @@ def main():
 
     # Training the model
     logger = CSVLogger(save_dir="logs/", name="MNISTContrast", version=0)
-    trainer = Trainer(max_epochs=20, logger=logger, gpus=1 if torch.cuda.is_available() else 0)
+    trainer = Trainer(max_epochs=20, logger=logger, devices=1 if torch.cuda.is_available() else 0)
     trainer.fit(model, train_loader, val_loader)
 
     # Plot embeddings after training
