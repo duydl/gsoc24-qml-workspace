@@ -63,7 +63,8 @@ class QG_Images(pyg_data.InMemoryDataset):
         coords = torch.tensor(coords, dtype=torch.float)
 
         # Create PyTorch Geometric Data object with node features
-        data = pyg_data.Data(x=node_features, pos=coords, num_nodes=node_features.shape[0], y=torch.tensor([label], dtype=torch.long))
+        data = pyg_data.Data(x=node_features, pos=coords, num_nodes=node_features.shape[0], 
+                             y=torch.tensor([label], dtype=torch.float))
 
         return data
     
@@ -305,9 +306,14 @@ class ModelPL_Contrastive(pl.LightningModule):
         self.model = model
         self.learning_rate = learning_rate
         # self.criterion = losses.ContrastiveLoss(pos_margin=0.1, neg_margin=1.0)
-        self.criterion = losses.NTXentLoss(temperature=0.5)
+        # try:
+        self.criterion_alt = losses.NTXentLoss(temperature=0.5)
+        # except:
+        from qml_ssl.losses import NTXentLoss
+        self.criterion = NTXentLoss(temperature=0.5)
 
         self.train_loss = torchmetrics.MeanMetric()
+        self.train_loss_alt = torchmetrics.MeanMetric()
         self.val_loss = torchmetrics.MeanMetric()
 
     def forward(self, data):
@@ -326,8 +332,11 @@ class ModelPL_Contrastive(pl.LightningModule):
     def training_step(self, data, batch_idx):
         embeddings = self(data)
         loss = self.criterion(embeddings, data.y)
+        loss_alt = self.criterion_alt(embeddings, data.y)
         self.train_loss.update(loss)
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
+        self.train_loss_alt.update(loss_alt)
+        self.log('train_loss_alt', loss_alt, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
         return loss
 
     def validation_step(self, data, batch_idx):
@@ -389,7 +398,7 @@ class LinearProbePL(pl.LightningModule):
         self.log('learning_rate', lr, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
         
         logits = self(data)
-        loss = self.criterion(logits.squeeze(), data.y)
+        loss = self.criterion(logits.squeeze(), data.y.long())
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
         
         self.train_auc(F.softmax(logits.squeeze(), dim=1)[:, 1], data.y)
@@ -402,7 +411,7 @@ class LinearProbePL(pl.LightningModule):
 
     def validation_step(self, data, batch_idx):
         logits = self(data)
-        loss = self.criterion(logits.squeeze(), data.y)
+        loss = self.criterion(logits.squeeze(), data.y.long())
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch_size)
         
         self.val_auc(F.softmax(logits.squeeze(), dim=1)[:, 1], data.y)

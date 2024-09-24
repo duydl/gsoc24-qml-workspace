@@ -3,7 +3,7 @@ from torchvision import datasets, transforms
 import numpy as np
 import matplotlib.pyplot as plt
     
-def load_mnist_data(classes=None, reduced_dim=None, dataset_size=None, data_dir="../../data"):
+def load_mnist_img(classes=None, reduced_dim=None, dataset_size=None, data_dir="../../data"):
     """
     Load and preprocess MNIST data.
 
@@ -100,8 +100,8 @@ if __name__ == "__main__":
     dataset_size = (1000, 300)
 
     # Load and preprocess the MNIST data
-    mnist_data_original = load_mnist_data(classes=classes, dataset_size=dataset_size)
-    mnist_data_resized = load_mnist_data(classes=classes, reduced_dim=reduced_dim, dataset_size=dataset_size)
+    mnist_data_original = load_mnist_img(classes=classes, dataset_size=dataset_size)
+    mnist_data_resized = load_mnist_img(classes=classes, reduced_dim=reduced_dim, dataset_size=dataset_size)
     
     # Visualize the preprocessed images
     visualize_data(mnist_data_original["train_data"], mnist_data_original["train_labels"], classes, title="Original MNIST Data")

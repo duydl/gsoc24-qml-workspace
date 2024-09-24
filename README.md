@@ -23,10 +23,16 @@ Welcome to the official repository for the QMLHEP project, conducted during ML4S
 To begin, create a new conda environment and install the necessary dependencies:
 
 ```bash
-conda create --name qml
-conda activate qml
-pip install -r requirements.txt
-python -m pip install -e .
+conda create --name py310 python==3.10
+conda activate py310 
+pip install -e .
+
+```
+
+Two dependecies of `torch-geometric` have to be installed separatedly:
+```bash
+pip install torch-scatter torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+12.1.html
+pip install torch-scatter torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+12.1.html
 ```
 
 ## Project Structure

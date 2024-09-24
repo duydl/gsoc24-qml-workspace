@@ -40,7 +40,7 @@ def main():
     vmf_kde_on_circle(embeddings, labels)
 
     # Training the model
-    logger = CSVLogger(save_dir="logs/", name="MNISTQContrast", version=0)
+    logger = CSVLogger(save_dir="logs/", name="MNISTHybridContrast", version=0)
     trainer = Trainer(max_epochs=10, logger=logger, devices=0)
     trainer.fit(model, train_loader, val_loader)
 

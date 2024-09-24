@@ -6,9 +6,9 @@ from torchvision import datasets, transforms as T
 from torch.utils.data import DataLoader, random_split, Subset, TensorDataset
 from pytorch_lightning.loggers import CSVLogger
 from pytorch_lightning import Trainer
-from models.classical.models import Conv_Siamese, Conv_Classifier
+from qml_ssl.models.classical.models import Conv_Siamese, Conv_Classifier
 from utils.utils import generate_embeddings, vmf_kde_on_circle, pca_proj, tsne_proj
-from utils.data_mnist import load_mnist_data
+from utils.data_mnist import load_mnist_img
 
 import matplotlib.pyplot as plt
 
@@ -21,7 +21,7 @@ def main():
     reduced_dim = 10
     dataset_size = (4000, 1000)
 
-    mnist_data = load_mnist_data(classes=classes, reduced_dim = reduced_dim, dataset_size=dataset_size, data_dir="../data/")
+    mnist_data = load_mnist_img(classes=classes, reduced_dim = reduced_dim, dataset_size=dataset_size, data_dir="../data/")
     
     def create_data_loader(data, labels, batch_size=64, shuffle=True, num_workers=4):
         dataset = TensorDataset(data, labels)
