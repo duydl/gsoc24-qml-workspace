@@ -6,7 +6,6 @@ import os
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
-import imageio
 import matplotlib.pyplot as plt
 import pennylane as qml
 from pennylane import numpy as np

@@ -10,20 +10,19 @@ def load_mnist_img(classes=None, reduced_dim=None, dataset_size=None, data_dir="
     Args:
         classes (tuple): Tuple of classes to filter (default is (3, 6)).
         reduced_dim (int): Size to resize the images to (default is None).
-        dataset_size (tuple): Custom dataset size (train_size, test_size) for faster training (default is None).
+        dataset_size (tuple): Custom dataset size (train_size, test_size) (default is None).
 
     Returns:
         dict: A dictionary with the preprocessed training and test datasets.
     """
-    # Load MNIST dataset
-    train_dataset = datasets.MNIST(root=data_dir, train=True, download=False, transform=transforms.ToTensor())
-    test_dataset = datasets.MNIST(root=data_dir, train=False, download=False, transform=transforms.ToTensor())
 
-    # # Normalize the datasets
-    # transform = transforms.Compose([
-    #     transforms.ToTensor(),
-    #     transforms.Normalize((0.1307,), (0.3081,))
-    # ])
+    data_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,))
+    ])
+    # Load MNIST dataset
+    train_dataset = datasets.MNIST(root=data_dir, train=True, download=False, transform=data_transform)
+    test_dataset = datasets.MNIST(root=data_dir, train=False, download=False, transform=data_transform)
 
     def filter_classes(dataset, classes):
         mask = torch.zeros_like(dataset.targets, dtype=torch.bool)
@@ -64,12 +63,16 @@ def load_mnist_img(classes=None, reduced_dim=None, dataset_size=None, data_dir="
         train_dataset.targets = train_dataset.targets[:dataset_size[0]]
         test_dataset.targets = test_dataset.targets[:dataset_size[1]]
 
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Test dataset size: {len(test_dataset)}")
+
     return {
         "train_data": train_dataset.data,
         "train_labels": train_dataset.targets,
         "test_data": test_dataset.data,
         "test_labels": test_dataset.targets
     }
+
 
 def visualize_data(data, labels, classes, title=""):
     """

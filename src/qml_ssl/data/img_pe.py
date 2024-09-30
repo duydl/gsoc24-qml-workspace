@@ -6,13 +6,14 @@ import matplotlib.pyplot as plt
 from torchvision import transforms
 from sklearn.model_selection import train_test_split
 
-class ParticleDataset(Dataset):
+class PE_IMG_Dataset(Dataset):
     def __init__(self, data, labels, transform=None):
         self.data = data
         self.labels = labels
         self.transform = transform
 
     def __len__(self):
+        
         return len(self.data)
 
     def __getitem__(self, idx):
@@ -44,7 +45,7 @@ def inspect_h5py_file(file_path):
 
         f.visititems(print_attrs)
 
-def load_pe_img(electron_file, photon_file, reduced_dim=None, dataset_size=-1, channel=0):
+def load_pe_img(electron_file, photon_file, reduced_dim=None, dataset_size=-1, channel=None):
     """
     Load and preprocess electron and photon data.
 
@@ -52,7 +53,7 @@ def load_pe_img(electron_file, photon_file, reduced_dim=None, dataset_size=-1, c
         electron_file (str): Path to the electron data file.
         photon_file (str): Path to the photon data file.
         reduced_dim (int): Size to resize the images to (default is None).
-        dataset_size (tuple): Custom dataset size (train_size, val_size, test_size) for faster training (default is None).
+        dataset_size (int): Custom dataset size.
 
     Returns:
         dict: A dictionary with the preprocessed training, validation, and test datasets.
@@ -63,15 +64,23 @@ def load_pe_img(electron_file, photon_file, reduced_dim=None, dataset_size=-1, c
     # print(f_electron['X'].shape, f_photon['X'].shape)
     # print(f_electron['y'].shape, f_photon['y'].shape)
     
-    electrons = f_electron['X'][:, :, :, channel][:dataset_size]
-    photons = f_photon['X'][:, :, :, channel][:dataset_size]
-    electrons_y = f_electron['y'][:][:dataset_size]
-    photons_y = f_photon['y'][:][:dataset_size]
+    if channel == None:
+        electrons = f_electron['X'][:, :, :, :][:dataset_size]
+        photons = f_photon['X'][:, :, :, :][:dataset_size]
+        electrons_y = f_electron['y'][:][:dataset_size]
+        photons_y = f_photon['y'][:][:dataset_size]
+    elif channel in (0, 1): 
+        electrons = f_electron['X'][:, :, :, channel][:dataset_size]
+        photons = f_photon['X'][:, :, :, channel][:dataset_size]
+        electrons_y = f_electron['y'][:][:dataset_size]
+        photons_y = f_photon['y'][:][:dataset_size]
+    else:
+        raise ValueError("Channel must be either 0 or 1.")
 
     x = np.vstack((electrons, photons))
     y = np.hstack((electrons_y, photons_y))
 
-    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.3, shuffle=True)
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2, shuffle=True)
     x_val, x_test, y_val, y_test = train_test_split(x_val, y_val, test_size=0.5, shuffle=False)
 
     if reduced_dim:
@@ -84,17 +93,20 @@ def load_pe_img(electron_file, photon_file, reduced_dim=None, dataset_size=-1, c
         x_val = np.stack([resize_transform(img) for img in x_val])
         x_test = np.stack([resize_transform(img) for img in x_test])
 
-    train_dataset = ParticleDataset(x_train, y_train)
-    val_dataset = ParticleDataset(x_val, y_val)
-    test_dataset = ParticleDataset(x_test, y_test)
+    train_dataset = PE_IMG_Dataset(x_train, y_train)
+    val_dataset = PE_IMG_Dataset(x_val, y_val)
+    test_dataset = PE_IMG_Dataset(x_test, y_test)
 
     return {
-        "train_dataset": train_dataset,
-        "val_dataset": val_dataset,
-        "test_dataset": test_dataset
+        "train_data": torch.tensor(x_train),
+        "val_data": torch.tensor(x_val),
+        "test_data": torch.tensor(x_test),
+        "train_labels": torch.tensor(y_train),
+        "val_labels": torch.tensor(y_val),
+        "test_labels": torch.tensor(y_test)
     }
 
-def visualize_data(data, labels, classes, title=""):
+def visualize_data(data, labels, classes=("P", "E"), title=""):
     """
     Visualize the dataset.
 
@@ -107,7 +119,7 @@ def visualize_data(data, labels, classes, title=""):
     fig, axs = plt.subplots(1, len(classes), figsize=(8, 4))
 
     for i, cls in enumerate(classes):
-        class_data = data[labels == cls]
+        class_data = data[labels == i]
         if len(class_data) > 0:
             axs[i].imshow(class_data[0].squeeze(), cmap='binary')
             axs[i].set_title(f"Class {cls}")

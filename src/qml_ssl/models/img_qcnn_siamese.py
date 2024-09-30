@@ -152,7 +152,6 @@ class ContrastiveConvEncoderCircuit:
         print(self.circuit_node(params, [inputs, inputs]))
         print(qml.draw(self.circuit)(params, [inputs, inputs]))
 
-
 class CustomTorchLayer(qml.qnn.TorchLayer):
     def __init__(
         self,

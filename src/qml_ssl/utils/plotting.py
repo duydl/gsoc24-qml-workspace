@@ -1,6 +1,4 @@
 import torch
-import torch.nn.functional as F
-import torchvision.transforms as T
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
@@ -8,45 +6,6 @@ from sklearn.manifold import TSNE
 
 import seaborn as sns
 import matplotlib.pyplot as plt
-
-
-def contrastive_loss_with_margins(embeddings, labels, pos_margin=0.25, neg_margin=1.5):
-    """
-    Custom contrastive loss function with positive and negative margins.
-    
-    Args:
-        embeddings (Tensor): Embedding vectors.
-        labels (Tensor): Corresponding labels.
-        pos_margin (float): Margin for positive pairs.
-        neg_margin (float): Margin for negative pairs.
-
-    Returns:
-        Tensor: Calculated loss.
-    """
-    distance_matrix = torch.cdist(embeddings, embeddings, p=2)
-    positive_loss = (1 - labels) * F.relu(distance_matrix - pos_margin).pow(2)
-    negative_loss = labels * F.relu(neg_margin - distance_matrix).pow(2)
-    combined_loss = 0.5 * (positive_loss + negative_loss)
-    mask = torch.eye(labels.size(0), dtype=torch.bool, device=labels.device)
-    combined_loss = combined_loss.masked_fill_(mask, 0)
-    loss = combined_loss.mean()
-    return loss
-
-def get_preprocessing(preprocess):
-    """
-    Get preprocessing transformation based on the specified type.
-
-    Args:
-        preprocess (str): Type of preprocessing.
-
-    Returns:
-        Callable: Preprocessing transformation.
-    """
-    if preprocess == "RandAffine":
-        return kornia.augmentation.RandomAffine(degrees=(-40, 40), translate=0.25, scale=[0.5, 1.5], shear=45)
-    elif preprocess == "RandAug":
-        return T.RandAugment()
-    return None
 
 def pca_proj(embeddings, labels, seed=1):
     """
@@ -134,7 +93,7 @@ def plot_training(logdir):
     # Plot training and validation loss
     metrics_df = pd.read_csv(f"{logdir}/metrics.csv")
     train_loss_epoch = metrics_df['train_loss'].dropna().reset_index(drop=True)
-    val_loss_epoch = metrics_df['val_loss'].dropna().reset_index(drop=True)
+    val_loss_epoch = metrics_df['valid_loss'].dropna().reset_index(drop=True)
     min_length = min(len(train_loss_epoch), len(val_loss_epoch))
     train_loss_epoch = train_loss_epoch[:min_length]
     val_loss_epoch = val_loss_epoch[:min_length]
@@ -166,8 +125,8 @@ def generate_embeddings(model, data_loader):
     with torch.no_grad():
         for batch in data_loader:
             x, y = batch
-            x = model.encoder(x)
-            emb = model.head(x)
+            emb = x = model.encoder(x)
+            emb = model.proj(x)
             embeddings.append(emb)
             labels.append(y)
     
@@ -175,6 +134,7 @@ def generate_embeddings(model, data_loader):
     labels = torch.cat(labels).cpu().numpy()
     
     return embeddings, labels
+
 
 # def swap_test_circuit(embedding1, embedding2):
 #     """
